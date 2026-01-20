@@ -1,0 +1,31 @@
+# Secrets and credentials - NEVER commit these!
+secrets.py
+
+# Python virtual environment
+venv/
+env/
+ENV/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# MicroPython compiled files
+*.mpy
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
