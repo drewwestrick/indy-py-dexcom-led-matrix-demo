@@ -14,18 +14,18 @@ print(f"WiFi connected, IP: {wlan.ifconfig()[0]}")
 
 # Fetch weather for Carmel, Indiana using wttr.in API
 # Format options: %t=temperature, %C=condition, %h=humidity, %w=wind
-url = "https://wttr.in/Carmel,Indiana?format=%t"
+url = "https://wttr.in/Carmel,Indianapolis?format=%t"
 
 print("Fetching weather...")
 response = urequests.get(url)
 temperature = response.text.strip()
 response.close()
 
-print(f"Current temperature in Carmel, IN: {temperature}")
+print(f"Current temperature in Indianapolis, IN: {temperature}")
 
 # If you want more detailed info:
 print("\nFetching detailed weather...")
-url_detailed = "https://wttr.in/Carmel,Indiana?format=j1"
+url_detailed = "https://wttr.in/Indianapolis,Indiana?format=j1"
 response = urequests.get(url_detailed)
 
 # Parse JSON response

@@ -26,7 +26,11 @@ class BLEWeather:
             (_SERVICE_UUID, ((_TEMP_UUID, _FLAG), (_HUMID_UUID, _FLAG))),
         ))
         
-        self.ble.gap_advertise(100000, adv_data=b'\x02\x01\x06\x0bCarmelWeather')
+        # Fixed advertising data with proper name AD structure
+        # Format: Length(1) + Type(1) + Data
+        # Flags: \x02\x01\x06 (length=2, type=flags, value=0x06)
+        # Name: \x0e\x09CarmelWeather (length=14, type=complete_name, value=name)
+        self.ble.gap_advertise(100000, adv_data=b'\x02\x01\x06\x0e\x09IndyWeather')
         
     def update(self, temp_f, humidity):
         # Write as UTF-8 strings with units (e.g., "72.5°F" and "65%")
@@ -50,12 +54,12 @@ print(f"WiFi: {wlan.ifconfig()[0]}")
 
 # Start BLE
 ble = BLEWeather()
-print("BLE advertising as 'CarmelWeather'")
+print("BLE advertising as 'IndyWeather'")
 
 # Fetch and advertise weather every 5 minutes
 while True:
     try:
-        r = urequests.get("https://wttr.in/Carmel,Indiana?format=j1")
+        r = urequests.get("https://wttr.in/Indianapolis,Indiana?format=j1")
         data = json.loads(r.text)['current_condition'][0]
         r.close()
         
