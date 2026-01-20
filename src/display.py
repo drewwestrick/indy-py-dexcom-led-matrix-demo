@@ -11,7 +11,7 @@ except ImportError:
     draw_char_blocks = None
 
 # Display configuration
-DISPLAY_X = 0
+DISPLAY_X = 6
 DISPLAY_Y = 0
 CUSTOM_FONT_CHAR_WIDTH = 6
 CUSTOM_FONT_SPACING = 0
@@ -33,16 +33,18 @@ GLUCOSE_HIGH = 180
 class Display:
     """Display manager for glucose readings"""
     
-    def __init__(self, galactic_unicorn, picographics):
+    def __init__(self, galactic_unicorn, picographics, digit_spacing=1):
         """
         Initialize display
         
         Args:
             galactic_unicorn: GalacticUnicorn instance
             picographics: PicoGraphics instance
+            digit_spacing: Pixel gap between digits (default: 1)
         """
         self.gu = galactic_unicorn
         self.graphics = picographics
+        self.digit_spacing = digit_spacing
     
     def get_glucose_color(self, glucose_value):
         """Determine glucose color based on value"""
@@ -56,23 +58,23 @@ class Display:
             return COLOR_GREEN
     
     def get_trend_arrow(self, glucose_trend):
-        """Convert Dexcom trend to arrow symbol"""
+        """Convert Dexcom trend to custom arrow symbol key"""
         if not glucose_trend:
-            return "-"
+            return "flat"
         
         trend_map = {
-            "DoubleUp": "+++",
-            "SingleUp": "++",
-            "FortyFiveUp": "+",
-            "Flat": "=",
-            "FortyFiveDown": "-",
-            "SingleDown": "--",
-            "DoubleDown": "---",
-            "NotComputable": "?",
-            "RateOutOfRange": "?"
+            "DoubleUp": "double_up",
+            "SingleUp": "single_up",
+            "FortyFiveUp": "forty_five_up",
+            "Flat": "flat",
+            "FortyFiveDown": "forty_five_down",
+            "SingleDown": "single_down",
+            "DoubleDown": "double_down",
+            "NotComputable": "flat",
+            "RateOutOfRange": "flat"
         }
         
-        return trend_map.get(glucose_trend, "-")
+        return trend_map.get(glucose_trend, "flat")
     
     def draw_custom_text(self, text, x, y, color):
         """Draw text using custom font blocks"""
@@ -87,9 +89,9 @@ class Display:
             if char in CUSTOM_FONT:
                 pen = self.graphics.create_pen(*color)
                 draw_char_blocks(self.graphics, CUSTOM_FONT[char], current_x, y, pen)
-                current_x += CUSTOM_FONT_CHAR_WIDTH + CUSTOM_FONT_SPACING
+                current_x += CUSTOM_FONT_CHAR_WIDTH + self.digit_spacing
             else:
-                current_x += CUSTOM_FONT_CHAR_WIDTH + CUSTOM_FONT_SPACING
+                current_x += CUSTOM_FONT_CHAR_WIDTH + self.digit_spacing
         
         return current_x
     
@@ -106,27 +108,27 @@ class Display:
         
         if glucose_value is not None:
             glucose_color = self.get_glucose_color(glucose_value)
+            # Right-align glucose value in 3-digit space (always reserve space for hundreds digit)
             glucose_str = str(glucose_value)
+            while len(glucose_str) < 3:
+                glucose_str = ' ' + glucose_str
             
             if CUSTOM_FONT and draw_char_blocks:
-                # Use custom font
+                # Use custom font for digits
                 end_x = self.draw_custom_text(glucose_str, DISPLAY_X, DISPLAY_Y, glucose_color)
                 
-                # Trend arrow using built-in font
-                arrow = self.get_trend_arrow(glucose_trend)
-                arrow_x = end_x + 2
-                arrow_y = DISPLAY_Y
-                self.graphics.set_pen(self.graphics.create_pen(*glucose_color))
-                self.graphics.text(arrow, arrow_x, arrow_y, scale=DISPLAY_SCALE_ARROW)
+                # Draw trend arrow symbol
+                arrow_key = self.get_trend_arrow(glucose_trend)
+                if arrow_key in CUSTOM_FONT:
+                    # Add small gap before arrow
+                    arrow_x = end_x + 2
+                    arrow_y = DISPLAY_Y
+                    pen = self.graphics.create_pen(*glucose_color)
+                    draw_char_blocks(self.graphics, CUSTOM_FONT[arrow_key], arrow_x, arrow_y, pen)
             else:
                 # Fallback to built-in font
                 self.graphics.set_pen(self.graphics.create_pen(*glucose_color))
                 self.graphics.text(glucose_str, DISPLAY_X, DISPLAY_Y, scale=DISPLAY_SCALE)
-                
-                arrow = self.get_trend_arrow(glucose_trend)
-                arrow_x = DISPLAY_X + len(glucose_str) * 12 + 2
-                arrow_y = DISPLAY_Y + 6
-                self.graphics.text(arrow, arrow_x, arrow_y, scale=DISPLAY_SCALE_ARROW)
         else:
             # No data yet
             self.graphics.set_pen(self.graphics.create_pen(*COLOR_WHITE))

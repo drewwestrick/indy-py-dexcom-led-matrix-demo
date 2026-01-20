@@ -20,9 +20,10 @@ from dexcom import DexcomClient
 from display import Display
 
 # Configuration
-DEXCOM_UPDATE_INTERVAL = 300  # Fetch glucose every 5 minutes (seconds)
+DEXCOM_UPDATE_INTERVAL = 30  # Fetch glucose every 30 seconds
 DISPLAY_UPDATE_INTERVAL = 1    # Update display every second
-
+DIGIT_SPACING = 1              # Pixel gap between digits
+TEST_MODE = True               # Run digit test on startup
 
 def connect_wifi():
     """Connect to WiFi"""
@@ -57,6 +58,47 @@ def sync_time():
         print(f"NTP sync failed: {e}")
 
 
+def run_digit_test(display):
+    """Run test mode cycling through values 50-400 over 25 seconds"""
+    print("\n" + "=" * 50)
+    print("RUNNING DIGIT TEST MODE")
+    print("Testing glucose values 50-400 over 25 seconds")
+    print("=" * 50)
+    
+    start_value = 50
+    end_value = 400
+    duration = 10  # seconds
+    
+    # Calculate number of steps (one per value)
+    num_values = end_value - start_value + 1  # 351 values
+    delay = duration / num_values  # ~0.071 seconds per value
+    
+    # Arrow trend cycle: 50 values per arrow type
+    arrow_trends = [
+        "DoubleDown",      # 50-99
+        "SingleDown",      # 100-149
+        "FortyFiveDown",   # 150-199
+        "Flat",            # 200-249
+        "FortyFiveUp",     # 250-299
+        "SingleUp",        # 300-349
+        "DoubleUp"         # 350-400
+    ]
+    
+    for value in range(start_value, end_value + 1):
+        # Calculate which arrow to show based on value
+        trend_index = min((value - start_value) // 50, len(arrow_trends) - 1)
+        trend = arrow_trends[trend_index]
+        
+        # Display current test value with appropriate trend
+        display.draw_glucose(value, trend)
+        print(f"Test: {value} mg/dL ({trend})", end='\r')
+        time.sleep(delay)
+    
+    print("\n" + "=" * 50)
+    print("DIGIT TEST COMPLETE")
+    print("=" * 50 + "\n")
+
+
 def main():
     """Main program"""
     print("=" * 50)
@@ -69,7 +111,11 @@ def main():
     gu.set_brightness(0.5)
     
     # Initialize display
-    display = Display(gu, graphics)
+    display = Display(gu, graphics, digit_spacing=DIGIT_SPACING)
+    
+    # Run digit test if enabled
+    if TEST_MODE:
+        run_digit_test(display)
     
     # Connect WiFi and sync time
     connect_wifi()
