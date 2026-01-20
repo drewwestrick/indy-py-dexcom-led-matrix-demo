@@ -46,16 +46,25 @@ class DexcomClient:
         print("Authenticating with Dexcom...")
         try:
             response = urequests.post(url, json=payload, headers=headers)
-            if response.status_code == 200:
-                self.account_id = response.json()
+            status = response.status_code
+            content = response.text
+            response.close()
+            
+            if status == 200:
+                # Parse the account ID from response
+                import json
+                self.account_id = json.loads(content) if content else None
                 self.account_id = self.account_id.strip('"') if isinstance(self.account_id, str) else self.account_id
                 print(f"Authentication successful. Account ID: {self.account_id[:8]}...")
-                response.close()
                 return self.account_id
             else:
-                print(f"Authentication failed: {response.status_code} - {response.text}")
-                response.close()
+                print(f"Authentication failed: {status} - {content}")
                 return None
+        except OSError as e:
+            # Network errors (e.g., -104 ECONNRESET)
+            print(f"Network error during authentication: {e}")
+            print("This often means the connection was reset. Try again in a moment.")
+            return None
         except Exception as e:
             print(f"Authentication error: {e}")
             return None
@@ -80,16 +89,25 @@ class DexcomClient:
         print("Logging in to Dexcom...")
         try:
             response = urequests.post(url, json=payload, headers=headers)
-            if response.status_code == 200:
-                self.session_id = response.json()
+            status = response.status_code
+            content = response.text
+            response.close()
+            
+            if status == 200:
+                # Parse the session ID from response
+                import json
+                self.session_id = json.loads(content) if content else None
                 self.session_id = self.session_id.strip('"') if isinstance(self.session_id, str) else self.session_id
                 print(f"Login successful. Session ID: {self.session_id[:8]}...")
-                response.close()
                 return self.session_id
             else:
-                print(f"Login failed: {response.status_code} - {response.text}")
-                response.close()
+                print(f"Login failed: {status} - {content}")
                 return None
+        except OSError as e:
+            # Network errors (e.g., -104 ECONNRESET)
+            print(f"Network error during login: {e}")
+            print("This often means the connection was reset. Try again in a moment.")
+            return None
         except Exception as e:
             print(f"Login error: {e}")
             return None
@@ -111,9 +129,13 @@ class DexcomClient:
         print("Fetching glucose data...")
         try:
             response = urequests.post(url)
-            if response.status_code == 200:
-                data = response.json()
-                response.close()
+            status = response.status_code
+            content = response.text
+            response.close()
+            
+            if status == 200:
+                import json
+                data = json.loads(content) if content else []
                 
                 if data and len(data) > 0:
                     reading = data[0]
@@ -126,16 +148,20 @@ class DexcomClient:
                     print("No recent glucose data available")
                     return False
             else:
-                print(f"Fetch failed: {response.status_code}")
-                response.close()
+                print(f"Fetch failed: {status}")
                 
                 # Session might have expired - try re-authenticating
-                if response.status_code in [401, 403, 500]:
+                if status in [401, 403, 500]:
                     print("Session expired - re-authenticating...")
                     self.session_id = None
                     if self.authenticate() and self.login():
                         return self.fetch_glucose()  # Retry once
                 return False
+        except OSError as e:
+            # Network errors (e.g., -104 ECONNRESET)
+            print(f"Network error during fetch: {e}")
+            print("Connection reset - will retry on next cycle")
+            return False
         except Exception as e:
             print(f"Fetch error: {e}")
             return False
