@@ -15,30 +15,34 @@ Displays real-time blood glucose data from Dexcom Share on a Pimoroni Galactic U
 ```
 indy-py-demo/
 ├── src/                    # Device files (runs on Pico)
-│   ├── main.py            # Main application
-│   ├── dexcom.py          # Dexcom API client
-│   ├── display.py         # Display rendering
-│   ├── font.py            # Custom font definitions
-│   └── secrets.py         # WiFi & Dexcom credentials
+│   ├── main.py            # Main application entry point
+│   ├── dexcom.py          # Dexcom Share API client
+│   ├── display.py         # Display rendering and graphics
+│   ├── font.py            # Custom font and arrow symbols
+│   └── secrets.py         # WiFi & Dexcom credentials (not in git)
 ├── host/                   # Development tools (runs on computer)
-│   ├── font_editor.py     # 6x10 grid font editor
-│   ├── pixel_designer.py  # Font design tool
-│   ├── simulator.py       # Display simulator
-│   └── test_display.py    # Testing utilities
-├── deploy.sh              # Deployment script
-└── README.md
+│   └── font_editor.py     # Interactive font/symbol editor
+├── docs/                   # Documentation
+│   ├── README.md          # This file
+│   ├── PLAN.md            # Original project requirements
+│   └── REFACTORING.md     # Development history
+├── deploy.sh              # Automated deployment script
+└── .gitignore             # Git exclusions
 ```
 
 ## Features
 
 - ✅ Real-time glucose monitoring via Dexcom Share API
-- ✅ Color-coded display (RED: <70, GREEN: 70-180, YELLOW: >180)
-- ✅ Trend arrows (+++ rising fast, = stable, --- falling fast)
-- ✅ Custom 6x10 pixel font support
+- ✅ Color-coded display (RED: <70, GREEN: 70-180, YELLOW: >180 mg/dL)
+- ✅ Custom blocky pixel art font (6x10 digits)
+- ✅ Trend arrows with custom 10px-wide symbols (flat, up, down, etc.)
+- ✅ Test mode for cycling through all values and arrows
 - ✅ Automatic WiFi reconnection
 - ✅ Session management with auto re-authentication
-- ✅ Updates every 5 minutes
+- ✅ Updates every 30 seconds (configurable)
 - ✅ Clean modular architecture
+- ✅ Interactive font/symbol editor with dropdown loading
+- ✅ Automated deployment script
 
 ## Prerequisites
 
@@ -60,9 +64,14 @@ Install the latest Pimoroni MicroPython firmware for Pico 2 W:
 python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
-pip install pygame mpremote mpy-cross
+# Install dependencies from requirements.txt
+pip install -r requirements.txt
 ```
+
+**Dependencies installed:**
+- `mpremote` - MicroPython remote control for deploying to device
+- `mpy-cross` - Cross-compiler for creating .mpy bytecode files
+- `pygame` - Graphics library for font editor GUI
 
 ## Setup Instructions
 
@@ -128,17 +137,22 @@ mpremote cp src/main.py :main.py
 - **HIGH**: > 180 mg/dL (YELLOW)
 
 ### Trend Arrows
-- `+++` Double Up (rising very fast)
-- `++` Single Up (rising fast)
-- `+` Forty Five Up (rising)
-- `=` Flat (stable)
-- `-` Forty Five Down (falling)
-- `--` Single Down (falling fast)
-- `---` Double Down (falling very fast)
 
-## Custom Fonts
+Custom 10px-wide pixel art symbols displayed next to glucose value:
 
-Use the font editor to create custom characters:
+- `double_up`: ⇈ Rising very fast (>2 mg/dL/min)
+- `single_up`: ↑ Rising fast (1-2 mg/dL/min)
+- `forty_five_up`: ↗ Rising (0.5-1 mg/dL/min)
+- `flat`: → Stable (±0.5 mg/dL/min)
+- `forty_five_down`: ↘ Falling (0.5-1 mg/dL/min)
+- `single_down`: ↓ Falling fast (1-2 mg/dL/min)
+- `double_down`: ⇊ Falling very fast (<-2 mg/dL/min)
+
+*Note: Arrows are custom block-based pixel art rendered from font.py*
+
+## Custom Fonts & Symbols
+
+Use the font editor to create or modify characters and symbols:
 
 ```bash
 source venv/bin/activate
@@ -148,27 +162,32 @@ python host/font_editor.py
 ### Font Editor Controls
 - **Left-click**: Paint pixel
 - **Right-click**: Erase pixel
+- **Drag**: Paint/erase multiple pixels
 - **C**: Clear grid
 - **E**: Export to console (3 formats)
-- **0-9**: Set character digit
-- **A-Z**: Set character letter
+- **L**: Toggle dropdown to load existing fonts
+- **UP/DOWN**: Navigate dropdown
+- **ENTER**: Load selected character/symbol
+- **W/S**: Increase/decrease grid width
+- **H/J**: Increase/decrease grid height
+- **R**: Reset grid to 6x10
+- **0-9**: Set current character (digit)
+- **A-Z**: Set current character (letter)
 - **ESC/Q**: Quit
 
-Export formats are printed to console. Copy to `src/font.py` `CUSTOM_FONT` dictionary.
+### Grid Size Limits
+- **Width**: 1-25 pixels (for wide arrows like double_up)
+- **Height**: 1-10 pixels (display height constraint)
 
-## Development Tools
+### Workflow
+1. Press **L** to open the dropdown
+2. Select an existing character/symbol to edit
+3. Modify the design using click/drag
+4. Press **E** to export the optimized block format
+5. Copy the output to `src/font.py`'s `CUSTOM_FONT` dictionary
+6. Run `./deploy.sh` to update the device
 
-### Font Editor
-6x10 grid editor for creating custom characters:
-```bash
-python host/font_editor.py
-```
-
-### Pixel Designer
-Interactive design tool with existing fonts:
-```bash
-python host/pixel_designer.py
-```
+Export formats are printed to console. The **optimized blocks format** is recommended for efficiency.
 
 ## Troubleshooting
 
@@ -215,14 +234,19 @@ GLUCOSE_HIGH = 180  # Yellow above this (mg/dL)
 ### Change Update Intervals
 Edit `src/main.py`:
 ```python
-DEXCOM_UPDATE_INTERVAL = 300  # Glucose fetch (seconds) - don't go below 60!
-DISPLAY_UPDATE_INTERVAL = 1    # Display refresh (seconds)
+DEXCOM_UPDATE_INTERVAL = 30  # Glucose fetch (seconds)
+DISPLAY_UPDATE_INTERVAL = 1   # Display refresh (seconds)
+DIGIT_SPACING = 1             # Pixel gap between digits
+TEST_MODE = False             # Set True to run test cycle on startup
 ```
+
+**Note:** Don't set `DEXCOM_UPDATE_INTERVAL` below 30 seconds to avoid API rate limits!
 
 ### Modify Display
 Edit `src/display.py` to customize:
 - Colors (`COLOR_*` constants)
-- Positioning (`DISPLAY_X`, `DISPLAY_Y`)
+- Positioning (`DISPLAY_X`, `DISPLAY_Y` - currently offset 6px for centering)
+- Glucose thresholds (`GLUCOSE_LOW`, `GLUCOSE_HIGH`)
 - Layout (modify `draw_glucose()` method)
 
 ## Security Notes
@@ -234,10 +258,11 @@ Edit `src/display.py` to customize:
 
 ## API Rate Limits
 
-**Don't set `DEXCOM_UPDATE_INTERVAL` below 60 seconds!** The Dexcom Share API has rate limits. This implementation:
-- Fetches every 5 minutes (conservative)
+**Don't set `DEXCOM_UPDATE_INTERVAL` below 30 seconds!** The Dexcom Share API has rate limits. This implementation:
+- Fetches every 30 seconds by default (aggressive but safe)
 - Auto-retries on failures
 - Reuses sessions to minimize auth requests
+- Test mode disabled in production (`TEST_MODE = False`)
 
 ## Resources
 
@@ -253,7 +278,7 @@ MIT License - feel free to modify and share!
 
 ## Acknowledgments
 
-- Built for monitoring your son's glucose levels 💙
+- Built for monitoring my son's glucose levels 💙
 - Inspired by the Dexcom Share API community projects
 - Uses the unofficial Dexcom Share API (no official support)
 

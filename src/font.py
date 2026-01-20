@@ -1,11 +1,27 @@
 """
 Custom font definitions for glucose display
-Format: Each character is defined as a list of blocks (x, y, width, height)
+Defines pixel art fonts and arrow symbols using optimized block format
+
+Block format: Each character is a list of (x, y, width, height) tuples representing
+rectangular blocks. This is more memory-efficient than storing individual pixels
+and faster to render on MicroPython.
+
+Font Design:
+- Digits (0-9): 6x10 pixels, blocky LED-style design
+- Space: Empty (for padding)
+- Arrows: 10px wide, variable height (10-21px for double arrows)
+  - double_up/down: 17x10 (tallest)
+  - single_up/down: 10x10
+  - forty_five_up/down: 10x10
+  - flat: 10x10
+
+Use font_editor.py in host/ to create or modify characters.
 """
 
-# 6x10 pixel font - optimized block format
+# 6x10 pixel blocky font - optimized block format
+# Each digit designed for LED matrix aesthetic
 CUSTOM_FONT = {
-    ' ': [],  # Space character (empty, just reserves width)
+    ' ': [],  # Space character (empty, reserves width for padding)
     '0': [
     (0, 0, 6, 2),  # Block 1
     (0, 2, 2, 8),  # Block 2
@@ -144,7 +160,8 @@ CUSTOM_FONT = {
     ],
 }
 
-# Arrow definitions (can use same format)
+# Deprecated: Arrow definitions moved to CUSTOM_FONT above
+# This dict is kept for backwards compatibility but is not used
 CUSTOM_ARROWS = {
     'double_up': [],
     'single_up': [],
@@ -155,17 +172,22 @@ CUSTOM_ARROWS = {
     'double_down': [],
 }
 
-# Helper function to draw a character from block list
+# Helper functions for rendering characters
+# These support multiple input formats for flexibility
+
 def draw_char_blocks(graphics, blocks, x_offset, y_offset, color):
     """
-    Draw a character defined by blocks at the given offset
+    Draw a character from optimized block format (RECOMMENDED)
+    
+    Most memory-efficient format. Each block is a rectangle (x, y, width, height).
+    Example: [(0, 0, 6, 2), (0, 2, 2, 8)] represents two rectangles.
     
     Args:
         graphics: PicoGraphics instance
-        blocks: List of (x, y, width, height) tuples
-        x_offset: X position to draw at
-        y_offset: Y position to draw at
-        color: Pen color to use
+        blocks: List of (x, y, width, height) tuples defining rectangles
+        x_offset: X position to draw at (pixels from left)
+        y_offset: Y position to draw at (pixels from top)
+        color: Pen color (created with graphics.create_pen())
     """
     graphics.set_pen(color)
     for x, y, w, h in blocks:
@@ -173,17 +195,20 @@ def draw_char_blocks(graphics, blocks, x_offset, y_offset, color):
             for dx in range(w):
                 graphics.pixel(x_offset + x + dx, y_offset + y + dy)
 
-# Helper function to draw from bitmap
 def draw_char_bitmap(graphics, bitmap, x_offset, y_offset, color):
     """
-    Draw a character defined by 2D bitmap at the given offset
+    Draw a character from 2D bitmap array (ALTERNATIVE FORMAT)
+    
+    Bitmap format is a 2D array where 1 = pixel on, 0 = pixel off.
+    Example: [[1,1,0], [1,0,1], [0,1,1]] for a 3x3 character.
+    Less efficient than blocks but easier to visualize.
     
     Args:
         graphics: PicoGraphics instance
         bitmap: 2D array where 1 = pixel on, 0 = pixel off
         x_offset: X position to draw at
         y_offset: Y position to draw at
-        color: Pen color to use
+        color: Pen color (created with graphics.create_pen())
     """
     graphics.set_pen(color)
     for y, row in enumerate(bitmap):

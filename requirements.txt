@@ -1,0 +1,11 @@
+# Python dependencies for Galactic Unicorn Dexcom Monitor
+# Install with: pip install -r requirements.txt
+
+# MicroPython remote control and deployment (used by deploy.sh)
+mpremote>=1.20.0
+
+# MicroPython cross-compiler (compiles .py to .mpy bytecode)
+mpy-cross>=1.20.0
+
+# Pygame for font editor GUI (host/font_editor.py)
+pygame>=2.5.0

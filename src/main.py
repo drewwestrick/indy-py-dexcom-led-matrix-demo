@@ -20,10 +20,10 @@ from dexcom import DexcomClient
 from display import Display
 
 # Configuration
-DEXCOM_UPDATE_INTERVAL = 30  # Fetch glucose every 30 seconds
-DISPLAY_UPDATE_INTERVAL = 1    # Update display every second
-DIGIT_SPACING = 1              # Pixel gap between digits
-TEST_MODE = True               # Run digit test on startup
+DEXCOM_UPDATE_INTERVAL = 30    # Seconds between glucose fetches (min: 30)
+DISPLAY_UPDATE_INTERVAL = 1     # Seconds between display updates
+DIGIT_SPACING = 1               # Pixel gap between digits for readability
+TEST_MODE = True                # Run diagnostic test on startup (set False for production)
 
 def connect_wifi():
     """Connect to WiFi"""
@@ -59,10 +59,19 @@ def sync_time():
 
 
 def run_digit_test(display):
-    """Run test mode cycling through values 50-400 over 25 seconds"""
+    """
+    Run test mode cycling through glucose values 50-400 with all arrow types
+    
+    Displays all 7 arrow symbols (double_down through double_up) across the
+    glucose range to verify font rendering and arrow positioning.
+    Duration: 10 seconds total, ~0.028s per value
+    
+    Args:
+        display: Display instance to render test values
+    """
     print("\n" + "=" * 50)
     print("RUNNING DIGIT TEST MODE")
-    print("Testing glucose values 50-400 over 25 seconds")
+    print("Testing glucose values 50-400 over 10 seconds")
     print("=" * 50)
     
     start_value = 50
@@ -100,7 +109,13 @@ def run_digit_test(display):
 
 
 def main():
-    """Main program"""
+    """
+    Main application entry point
+    
+    Initializes hardware, runs optional test mode, connects to WiFi,
+    authenticates with Dexcom Share API, and enters main loop to
+    periodically fetch and display glucose data.
+    """
     print("=" * 50)
     print("Galactic Unicorn - Dexcom Glucose Monitor")
     print("=" * 50)
