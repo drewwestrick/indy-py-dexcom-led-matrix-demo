@@ -18,11 +18,6 @@ fi
 echo "Compiling Python files..."
 cd src
 
-# Compile modules (not main.py - it runs as source)
-mpy-cross dexcom.py
-mpy-cross display.py
-mpy-cross font.py
-
 # Check if secrets.py exists
 if [ ! -f "secrets.py" ]; then
     echo "Error: src/secrets.py not found!"
@@ -35,12 +30,12 @@ mpy-cross secrets.py
 
 echo "Copying files to device..."
 # Copy compiled modules
-mpremote cp dexcom.mpy :dexcom.mpy
-mpremote cp display.mpy :display.mpy
-mpremote cp font.mpy :font.mpy
 mpremote cp secrets.mpy :secrets.mpy
 
-# Copy main.py as source (easier to debug)
+# Copy files as source (easier to debug)
+mpremote cp dexcom.py :dexcom.py
+mpremote cp display.py :display.py
+mpremote cp font.py :font.py
 mpremote cp main.py :main.py
 
 cd ..
