@@ -128,24 +128,68 @@ def main():
     # Initialize display
     display = Display(gu, graphics, digit_spacing=DIGIT_SPACING)
     
-    # Run digit test if enabled
-    if TEST_MODE:
-        run_digit_test(display)
-    
-    # Connect WiFi and sync time
-    connect_wifi()
-    sync_time()
-    
-    # Initialize Dexcom client
+    # Initialize WiFi and Dexcom client
+    wlan = None
     dexcom = DexcomClient(
         secrets.DEXCOM_USER,
         secrets.DEXCOM_PASS,
         secrets.DEXCOM_US
     )
     
-    # Initial authentication and fetch
-    if dexcom.authenticate() and dexcom.login():
-        dexcom.fetch_glucose()
+    # State tracking for concurrent operations
+    wifi_connected = False
+    wifi_start_time = None
+    dexcom_authenticated = False
+    dexcom_logged_in = False
+    dexcom_fetched = False
+    
+    # Run digit test if enabled, while connecting to WiFi in parallel
+    if TEST_MODE:
+        print("Starting WiFi connection in parallel with self-test...")
+        wlan = network.WLAN(network.STA_IF)
+        wlan.active(True)
+        wlan.connect(secrets.WIFI_SSID, secrets.WIFI_PASS)
+        wifi_start_time = time.time()
+        
+        # Run test while WiFi connects in background
+        run_digit_test(display)
+        
+        # Check WiFi status after test
+        max_wait_remaining = 30 - (time.time() - wifi_start_time)
+        wait_count = 0
+        while not wifi_connected and max_wait_remaining > 0 and wait_count < max_wait_remaining:
+            status = wlan.status()
+            if status < 0 or status >= 3:
+                break
+            print(f"Waiting for WiFi... (status: {status})")
+            time.sleep(1)
+            wait_count += 1
+        
+        if wlan.status() == 3:
+            wifi_connected = True
+            print(f"Connected! IP: {wlan.ifconfig()[0]}")
+        else:
+            print(f"WiFi connection failed after test (status: {wlan.status()})")
+            raise RuntimeError("WiFi connection failed")
+    else:
+        # Normal flow: connect WiFi first
+        wlan = connect_wifi()
+        wifi_connected = True
+    
+    # Sync time
+    sync_time()
+    
+    # Now authenticate and fetch Dexcom data
+    print("Authenticating with Dexcom while preparing display...")
+    if dexcom.authenticate():
+        dexcom_authenticated = True
+        if dexcom.login():
+            dexcom_logged_in = True
+            if dexcom.fetch_glucose():
+                dexcom_fetched = True
+    
+    if not dexcom_fetched:
+        print("Warning: Initial Dexcom fetch failed, will retry in main loop")
     
     print("Starting main loop...")
     last_fetch = time.time()
