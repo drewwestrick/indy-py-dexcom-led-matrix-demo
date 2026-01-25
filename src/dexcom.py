@@ -52,7 +52,7 @@ class DexcomClient:
             
             if status == 200:
                 # Parse the account ID from response
-                import json
+                self.account_id = json.loads(content) if content else None
                 self.account_id = self.account_id.strip('"') if isinstance(self.account_id, str) else self.account_id
                 print(f"Authentication successful. Account ID: {self.account_id[:8]}...")
                 return self.account_id
@@ -94,8 +94,8 @@ class DexcomClient:
             
             if status == 200:
                 # Parse the session ID from response
-                import json
-                self.session_id = self.session_id.strip('"') if isinstance(self.session_id, str) else self.session_id
+                self.session_id = json.loads(content) if content else None
+                self.session_id = self.session_id.strip('\"') if isinstance(self.session_id, str) else self.session_id
                 print(f"Login successful. Session ID: {self.session_id[:8]}...")
                 return self.session_id
             else:
@@ -110,19 +110,14 @@ class DexcomClient:
             print(f"Login error: {e}")
             return None
     
-    def fetch_glucose(self):
-        """
-        Step 3: Fetch late, _retry_count=0):
+    def fetch_glucose(self, _retry_count=0):
         """
         Step 3: Fetch latest glucose reading
         Returns: True if successful, False otherwise
         """
         if not self.session_id:
-            print("No session ID - attempting re-authentication...")
-            if not self.authenticate():
-                return False
-            if not self.login():
-                return False
+            print("Error: No session ID available")
+            return False
         
         url = f"{self.base_url}/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues?sessionId={self.session_id}&minutes=10&maxCount=1"
         

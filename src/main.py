@@ -185,7 +185,6 @@ def main():
     sync_time()
     
     # Authenticate and fetch initial Dexcom data
-    print("Authenticating with Dexcom...")
     if dexcom.authenticate() and dexcom.login():
         dexcom.fetch_glucose()  # Initial fetch (optional)
     else:
