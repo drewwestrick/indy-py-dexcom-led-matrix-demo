@@ -6,6 +6,7 @@ Main application entry point
 import time
 import network
 import ntptime
+import uasyncio as asyncio
 from galactic import GalacticUnicorn
 from picographics import PicoGraphics, DISPLAY_GALACTIC_UNICORN
 
@@ -21,9 +22,20 @@ from display import Display
 
 # Configuration
 DEXCOM_UPDATE_INTERVAL = 30    # Seconds between glucose fetches (min: 30)
-DISPLAY_UPDATE_INTERVAL = 1     # Seconds between display updates
+DISPLAY_UPDATE_INTERVAL = 1     # Deprecated: No longer used in async version (kept for reference)
 DIGIT_SPACING = 1               # Pixel gap between digits for readability
 TEST_MODE = True                # Run diagnostic test on startup (set False for production)
+
+# Brightness configuration
+BRIGHTNESS_MIN = 0.2           # Minimum brightness (20%)
+BRIGHTNESS_MAX = 1.0           # Maximum brightness (100%)
+BRIGHTNESS_STEP = 0.1          # Brightness adjustment step (10%)
+BRIGHTNESS_DEFAULT = 0.5       # Default brightness (50%)
+
+# Galactic Unicorn button constants (from galactic.py)
+# LUX buttons on Galactic Unicorn for brightness control
+SWITCH_BRIGHTNESS_UP = 21     # LUX + button (brightness up)
+SWITCH_BRIGHTNESS_DOWN = 26   # LUX - button (brightness down)
 
 def connect_wifi():
     """Connect to WiFi"""
@@ -113,8 +125,7 @@ def main():
     Main application entry point
     
     Initializes hardware, runs optional test mode, connects to WiFi,
-    authenticates with Dexcom Share API, and enters main loop to
-    periodically fetch and display glucose data.
+    authenticates with Dexcom Share API, and starts async event loop.
     """
     print("=" * 50)
     print("Galactic Unicorn - Dexcom Glucose Monitor")
@@ -123,25 +134,21 @@ def main():
     # Initialize hardware
     gu = GalacticUnicorn()
     graphics = PicoGraphics(DISPLAY_GALACTIC_UNICORN)
-    gu.set_brightness(0.5)
+    
+    # Initialize brightness
+    current_brightness = BRIGHTNESS_DEFAULT
+    gu.set_brightness(current_brightness)
     
     # Initialize display
     display = Display(gu, graphics, digit_spacing=DIGIT_SPACING)
+    display.set_brightness(current_brightness)
     
     # Initialize WiFi and Dexcom client
-    wlan = None
     dexcom = DexcomClient(
         secrets.DEXCOM_USER,
         secrets.DEXCOM_PASS,
         secrets.DEXCOM_US
     )
-    
-    # State tracking for concurrent operations
-    wifi_connected = False
-    wifi_start_time = None
-    dexcom_authenticated = False
-    dexcom_logged_in = False
-    dexcom_fetched = False
     
     # Run digit test if enabled, while connecting to WiFi in parallel
     if TEST_MODE:
@@ -157,7 +164,7 @@ def main():
         # Check WiFi status after test
         max_wait_remaining = 30 - (time.time() - wifi_start_time)
         wait_count = 0
-        while not wifi_connected and max_wait_remaining > 0 and wait_count < max_wait_remaining:
+        while max_wait_remaining > 0 and wait_count < max_wait_remaining:
             status = wlan.status()
             if status < 0 or status >= 3:
                 break
@@ -166,58 +173,164 @@ def main():
             wait_count += 1
         
         if wlan.status() == 3:
-            wifi_connected = True
             print(f"Connected! IP: {wlan.ifconfig()[0]}")
         else:
             print(f"WiFi connection failed after test (status: {wlan.status()})")
             raise RuntimeError("WiFi connection failed")
     else:
         # Normal flow: connect WiFi first
-        wlan = connect_wifi()
-        wifi_connected = True
+        connect_wifi()
     
     # Sync time
     sync_time()
     
-    # Now authenticate and fetch Dexcom data
-    print("Authenticating with Dexcom while preparing display...")
-    if dexcom.authenticate():
-        dexcom_authenticated = True
-        if dexcom.login():
-            dexcom_logged_in = True
-            if dexcom.fetch_glucose():
-                dexcom_fetched = True
+    # Authenticate and fetch initial Dexcom data
+    print("Authenticating with Dexcom...")
+    if dexcom.authenticate() and dexcom.login():
+        dexcom.fetch_glucose()  # Initial fetch (optional)
+    else:
+        print("Warning: Dexcom authentication failed, will retry in main loop")
     
-    if not dexcom_fetched:
-        print("Warning: Initial Dexcom fetch failed, will retry in main loop")
+    # Start async event loop
+    print("Starting async event loop...")
+    try:
+        asyncio.run(async_main(gu, display, dexcom, current_brightness))
+    except KeyboardInterrupt:
+        print("Interrupted by user")
+
+
+async def async_main(gu, display, dexcom, initial_brightness):
+    """
+    Async main loop - coordinates all tasks
     
-    print("Starting main loop...")
-    last_fetch = time.time()
+    Args:
+        gu: GalacticUnicorn instance
+        display: Display instance
+        dexcom: DexcomClient instance
+        initial_brightness: Initial brightness value
+    """
+    # Shared state - initialize with current or None values
+    state = {
+        'brightness': initial_brightness,
+        'needs_update': True,  # Flag to trigger display updates
+        'glucose_value': dexcom.get_glucose_value() or None,
+        'glucose_trend': dexcom.get_glucose_trend() or None,
+    }
     
-    # Main loop
+    # Create tasks
+    tasks = [
+        asyncio.create_task(button_checker(gu, display, state)),
+        asyncio.create_task(glucose_fetcher(dexcom, state)),
+        asyncio.create_task(display_updater(display, state)),
+    ]
+    
+    # Run all tasks concurrently with error handling
+    try:
+        await asyncio.gather(*tasks)
+    except Exception as e:
+        print(f"Critical error in async task: {e}")
+        # Tasks will be cancelled when function exits
+        raise
+
+
+async def button_checker(gu, display, state):
+    """
+    Async task to check buttons frequently
+    
+    Args:
+        gu: GalacticUnicorn instance
+        display: Display instance
+        state: Shared state dictionary
+    """
+    lux_up_was_pressed = False
+    lux_down_was_pressed = False
+    
+    while True:
+        # Check for brightness button presses (edge detection)
+        lux_up_pressed = gu.is_pressed(SWITCH_BRIGHTNESS_UP)
+        lux_down_pressed = gu.is_pressed(SWITCH_BRIGHTNESS_DOWN)
+        
+        # LUX Up - increase brightness on press (not hold)
+        if lux_up_pressed and not lux_up_was_pressed:
+            state['brightness'] = min(state['brightness'] + BRIGHTNESS_STEP, BRIGHTNESS_MAX)
+            gu.set_brightness(state['brightness'])
+            display.set_brightness(state['brightness'])
+            state['needs_update'] = True
+            print(f"Brightness: {state['brightness']:.1f}")
+        lux_up_was_pressed = lux_up_pressed
+        
+        # LUX Down - decrease brightness on press (not hold)
+        if lux_down_pressed and not lux_down_was_pressed:
+            state['brightness'] = max(state['brightness'] - BRIGHTNESS_STEP, BRIGHTNESS_MIN)
+            gu.set_brightness(state['brightness'])
+            display.set_brightness(state['brightness'])
+            state['needs_update'] = True
+            print(f"Brightness: {state['brightness']:.1f}")
+        lux_down_was_pressed = lux_down_pressed
+        
+        # Check buttons every 50ms for responsiveness
+        await asyncio.sleep(0.05)
+
+
+async def glucose_fetcher(dexcom, state):
+    """
+    Async task to fetch glucose data periodically
+    
+    Args:
+        dexcom: DexcomClient instance
+        state: Shared state dictionary
+    """
     while True:
         try:
-            current_time = time.time()
-            
-            # Fetch new glucose data periodically
-            if current_time - last_fetch >= DEXCOM_UPDATE_INTERVAL:
-                dexcom.fetch_glucose()
-                last_fetch = current_time
-            
-            # Update display
-            display.draw_glucose(
-                dexcom.get_glucose_value(),
-                dexcom.get_glucose_trend()
-            )
-            
-            time.sleep(DISPLAY_UPDATE_INTERVAL)
-            
-        except KeyboardInterrupt:
-            print("Interrupted by user")
-            break
+            if dexcom.fetch_glucose():
+                new_value = dexcom.get_glucose_value()
+                new_trend = dexcom.get_glucose_trend()
+                
+                # Only trigger update if values actually changed
+                if new_value != state['glucose_value'] or new_trend != state['glucose_trend']:
+                    state['glucose_value'] = new_value
+                    state['glucose_trend'] = new_trend
+                    state['needs_update'] = True
         except Exception as e:
-            print(f"Error in main loop: {e}")
-            time.sleep(5)
+            print(f"Error fetching glucose: {e}")
+        
+        # Fetch every 30 seconds
+        await asyncio.sleep(DEXCOM_UPDATE_INTERVAL)
+
+
+async def display_updater(display, state):
+    """
+    Async task to update display only when needed
+    
+    Updates when:
+    - needs_update flag is set (glucose/brightness change)
+    - Timer bar needs animation update (every 1 second)
+    
+    Args:
+        display: Display instance
+        state: Shared state dictionary
+    """
+    last_timer_update = time.time()
+    
+    while True:
+        current_time = time.time()
+        
+        # Update timer bar every 1 second for animation
+        timer_needs_update = (current_time - last_timer_update) >= 1
+        
+        # Redraw if something changed or timer needs update
+        if state['needs_update'] or timer_needs_update:
+            display.draw_glucose(
+                state['glucose_value'],
+                state['glucose_trend']
+            )
+            state['needs_update'] = False
+            
+            if timer_needs_update:
+                last_timer_update = current_time
+        
+        # Check every 100ms for updates
+        await asyncio.sleep(0.1)
 
 
 if __name__ == "__main__":

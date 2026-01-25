@@ -4,6 +4,7 @@ Handles authentication and glucose data fetching
 """
 
 import time
+import json
 import urequests
 
 # Constants
@@ -28,7 +29,6 @@ class DexcomClient:
         self.session_id = None
         self.glucose_value = None
         self.glucose_trend = None
-        self.last_fetch = 0
     
     def authenticate(self):
         """
@@ -53,7 +53,6 @@ class DexcomClient:
             if status == 200:
                 # Parse the account ID from response
                 import json
-                self.account_id = json.loads(content) if content else None
                 self.account_id = self.account_id.strip('"') if isinstance(self.account_id, str) else self.account_id
                 print(f"Authentication successful. Account ID: {self.account_id[:8]}...")
                 return self.account_id
@@ -96,7 +95,6 @@ class DexcomClient:
             if status == 200:
                 # Parse the session ID from response
                 import json
-                self.session_id = json.loads(content) if content else None
                 self.session_id = self.session_id.strip('"') if isinstance(self.session_id, str) else self.session_id
                 print(f"Login successful. Session ID: {self.session_id[:8]}...")
                 return self.session_id
@@ -113,6 +111,8 @@ class DexcomClient:
             return None
     
     def fetch_glucose(self):
+        """
+        Step 3: Fetch late, _retry_count=0):
         """
         Step 3: Fetch latest glucose reading
         Returns: True if successful, False otherwise
@@ -134,14 +134,12 @@ class DexcomClient:
             response.close()
             
             if status == 200:
-                import json
                 data = json.loads(content) if content else []
                 
                 if data and len(data) > 0:
                     reading = data[0]
                     self.glucose_value = reading.get("Value")
                     self.glucose_trend = reading.get("Trend")
-                    self.last_fetch = time.time()
                     print(f"Glucose: {self.glucose_value} mg/dL, Trend: {self.glucose_trend}")
                     return True
                 else:
@@ -150,14 +148,12 @@ class DexcomClient:
             else:
                 print(f"Fetch failed: {status}")
                 
-                # Session might have expired - try re-authenticating
-                if status in [401, 403, 500]:
+                # Session might have expired - try re-authenticating once
+                if status in [401, 403, 500] and _retry_count == 0:
                     print("Session expired - re-authenticating...")
                     self.session_id = None
                     if self.authenticate() and self.login():
-                        return self.fetch_glucose()  # Retry once
-                return False
-        except OSError as e:
+                        return self.fetch_glucose(_retry_count=1)  # Retry once with protection
             # Network errors (e.g., -104 ECONNRESET)
             print(f"Network error during fetch: {e}")
             print("Connection reset - will retry on next cycle")

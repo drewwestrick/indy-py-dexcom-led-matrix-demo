@@ -26,8 +26,8 @@ DISPLAY_SCALE_ARROW = 1
 # Colors (RGB tuples)
 COLOR_WHITE = (255, 255, 255)
 COLOR_RED = (255, 0, 0)
-COLOR_YELLOW = (255, 200, 0)
-COLOR_GREEN = (81, 138, 40)
+COLOR_YELLOW = (255, 89, 18)
+COLOR_GREEN = (92, 115, 255)
 
 # Glucose thresholds (mg/dL)
 GLUCOSE_LOW = 70
@@ -60,10 +60,20 @@ class Display:
         self.gu = galactic_unicorn
         self.graphics = picographics
         self.digit_spacing = digit_spacing
+        self.brightness = DISPLAY_BRIGHTNESS  # Current brightness level
         
         # Timer bar state
         self.last_glucose_value = None
         self.last_update_time = time.time()
+    
+    def set_brightness(self, brightness):
+        """
+        Update display brightness
+        
+        Args:
+            brightness: Brightness level (0.0-1.0)
+        """
+        self.brightness = max(0.0, min(1.0, brightness))
     
     def get_glucose_color(self, glucose_value):
         """
@@ -169,7 +179,7 @@ class Display:
         # Draw fully-lit pixels from bottom up
         if full_pixels > 0:
             # Apply display brightness to full pixels
-            full_color = tuple(int(c * DISPLAY_BRIGHTNESS) for c in color)
+            full_color = tuple(int(c * self.brightness) for c in color)
             pen = self.graphics.create_pen(*full_color)
             self.graphics.set_pen(pen)
             
@@ -180,9 +190,9 @@ class Display:
         
         # Draw growing pixel with progressive brightness
         if has_growing_pixel and brightness > 0:
-            # Scale color by brightness (0.0 to DISPLAY_BRIGHTNESS)
+            # Scale color by brightness (0.0 to self.brightness)
             # Fades from 0% to the configured display brightness level
-            scaled_brightness = brightness * DISPLAY_BRIGHTNESS
+            scaled_brightness = brightness * self.brightness
             dim_color = tuple(int(c * scaled_brightness) for c in color)
             pen = self.graphics.create_pen(*dim_color)
             self.graphics.set_pen(pen)
@@ -221,7 +231,7 @@ class Display:
             glucose_color = self.get_glucose_color(glucose_value)
             
             # Apply display brightness to glucose color
-            display_color = tuple(int(c * DISPLAY_BRIGHTNESS) for c in glucose_color)
+            display_color = tuple(int(c * self.brightness) for c in glucose_color)
             
             # Right-align glucose value in 3-digit space
             # Examples: "120" → "120", "85" → " 85", "9" → "  9"

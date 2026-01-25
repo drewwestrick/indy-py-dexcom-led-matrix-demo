@@ -33,9 +33,11 @@ indy-py-demo/
 ## Features
 
 - ✅ Real-time glucose monitoring via Dexcom Share API
-- ✅ Color-coded display (RED: <70, GREEN: 70-180, YELLOW: >180 mg/dL)
+- ✅ Color-coded display (RED: <70, BLUE: 70-180, YELLOW: >180 mg/dL)
 - ✅ Custom blocky pixel art font (6x10 digits)
 - ✅ Trend arrows with custom 10px-wide symbols (flat, up, down, etc.)
+- ✅ Hardware brightness control using LUX +/- buttons (9 levels: 20%-100%)
+- ✅ Async/event-driven architecture for responsive buttons and efficient updates
 - ✅ Test mode for cycling through all values and arrows
 - ✅ Automatic WiFi reconnection
 - ✅ Session management with auto re-authentication
@@ -100,40 +102,50 @@ DEXCOM_US = True  # True for US servers, False for international
 
 # Or manually:
 cd src
-mpy-cross dexcom.py display.py font.py secrets.py
-mpremote cp *.mpy :
+mpy-cross secrets.py
+mpremote cp secrets.mpy :secrets.mpy
+mpremote cp dexcom.py :dexcom.py
+mpremote cp display.py :display.py
+mpremote cp font.py :font.py
 mpremote cp main.py :main.py
+cd ..
 ```
 
 ### Step 3: Run
-
-You should see both `main.py` and `secrets.mpy` on the device.
-
-### Step 6your Galactic Unicorn** via USB, then:
-
-```bash
-# Activate venv if not already active
-source venv/bin/activate
-
-# Copy the compiled secrets to the Pico
-mpremote cp secrets.mpy :secrets.mpy
-
-# Copy main.py to the Pico
-mpremote cp main.py :main.py
 
 ```bash
 # Run once (via mpremote)
 mpremote run src/main.py
 
-# Or copy to device to auto-run on boot
-mpremote cp src/main.py :main.py
+# Or for auto-run on boot, copy main.py as boot.py
+mpremote cp src/main.py :boot.py
 ```
+
+## Architecture
+
+### Async Event-Driven Design
+
+The system uses MicroPython's `uasyncio` for concurrent task management:
+
+**Three Independent Tasks:**
+1. **button_checker** - Polls LUX buttons every 50ms for instant brightness response
+2. **glucose_fetcher** - Fetches glucose data every 30 seconds
+3. **display_updater** - Redraws display only when:
+   - Glucose value changes
+   - Brightness changes
+   - Timer bar animation update (every 1 second)
+
+**Benefits:**
+- Responsive buttons (no blocking)
+- Efficient CPU usage (event-driven updates)
+- Lower power consumption
+- True concurrent operations
 
 ## Display Configuration
 
 ### Glucose Ranges
 - **LOW**: < 70 mg/dL (RED)
-- **NORMAL**: 70-180 mg/dL (GREEN)
+- **NORMAL**: 70-180 mg/dL (BLUE)
 - **HIGH**: > 180 mg/dL (YELLOW)
 
 ### Trend Arrows
@@ -149,6 +161,31 @@ Custom 10px-wide pixel art symbols displayed next to glucose value:
 - `double_down`: ⇊ Falling very fast (<-2 mg/dL/min)
 
 *Note: Arrows are custom block-based pixel art rendered from font.py*
+
+### Brightness Control
+
+Adjust display brightness using the Galactic Unicorn's built-in LUX buttons:
+
+- **LUX + button**: Increase brightness (10% per press)
+- **LUX - button**: Decrease brightness (10% per press)
+- **Range**: 20% to 100% (9 levels: 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
+- **Default**: 50%
+
+Brightness changes are applied immediately to both the LED matrix hardware and the rendered display colors. The current brightness level is printed to the console when adjusted. Each button press changes brightness by one level (0.1 increment).
+
+#### Technical Details
+
+The brightness control works at two levels:
+1. **Hardware level**: `gu.set_brightness(value)` - Controls LED driver PWM
+2. **Software level**: `display.set_brightness(value)` - Scales color values before rendering
+
+This dual approach ensures consistent brightness across all display elements (glucose digits, arrows, timer bar) with proper color balance at all brightness levels.
+
+**Button IDs:**
+- `SWITCH_BRIGHTNESS_UP = 21` (LUX + button)
+- `SWITCH_BRIGHTNESS_DOWN = 26` (LUX - button)
+
+Edge detection is used to register single button presses - the brightness only changes on the initial press, not while holding the button. Brightness persists until device reset (returns to default on reboot).
 
 ## Custom Fonts & Symbols
 
@@ -235,16 +272,27 @@ GLUCOSE_HIGH = 180  # Yellow above this (mg/dL)
 Edit `src/main.py`:
 ```python
 DEXCOM_UPDATE_INTERVAL = 30  # Glucose fetch (seconds)
-DISPLAY_UPDATE_INTERVAL = 1   # Display refresh (seconds)
 DIGIT_SPACING = 1             # Pixel gap between digits
-TEST_MODE = False             # Set True to run test cycle on startup
+TEST_MODE = True              # Set False to skip test cycle on startup
 ```
 
 **Note:** Don't set `DEXCOM_UPDATE_INTERVAL` below 30 seconds to avoid API rate limits!
 
+### Adjust Brightness Settings
+Edit `src/main.py`:
+```python
+BRIGHTNESS_MIN = 0.2           # Minimum brightness (20%)
+BRIGHTNESS_MAX = 1.0           # Maximum brightness (100%)
+BRIGHTNESS_STEP = 0.1          # Brightness adjustment step (10%)
+BRIGHTNESS_DEFAULT = 0.5       # Default brightness on startup (50%)
+```
+
 ### Modify Display
 Edit `src/display.py` to customize:
-- Colors (`COLOR_*` constants)
+- Colors:
+  - `COLOR_RED = (255, 0, 0)` - Low glucose (<70)
+  - `COLOR_BLUE = (92, 115, 255)` - Normal glucose (70-180)
+  - `COLOR_YELLOW = (255, 89, 18)` - High glucose (>180)
 - Positioning (`DISPLAY_X`, `DISPLAY_Y` - currently offset 6px for centering)
 - Glucose thresholds (`GLUCOSE_LOW`, `GLUCOSE_HIGH`)
 - Layout (modify `draw_glucose()` method)
